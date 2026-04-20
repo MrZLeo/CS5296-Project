@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fib-wasm
+  annotations:
+    module.wasm.image/variant: Wasm  # 标识这是一个 Wasm 模块
+spec:
+  runtimeClassName: wasmedge         # 核心：告诉 K8s 用 Wasm 引擎跑
+  containers:
+    - name: fib-wasm-container
+      image: secondstate/rust-learning:helloworld # 先用官方 Wasm 镜像，确保实验一定能跑通

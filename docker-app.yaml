@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fib-docker
+spec:
+  containers:
+    - name: fib-container
+      image: my-docker-app:latest
+      imagePullPolicy: IfNotPresent
+      # 在 spec.containers 下添加
+      resources:
+        limits:
+          memory: "32Mi"
+          cpu: "500m"
+        requests:
+          memory: "8Mi"
+          cpu: "100m"
