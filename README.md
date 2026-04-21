@@ -509,35 +509,20 @@ UV_CACHE_DIR=.uv-cache uv run python scripts/plot_benchmarks.py \
 target/bench-results/plots
 ```
 
-脚本会生成：
+脚本当前会生成：
 
-- `e2e_mean_ms.png`
-  各 runtime 在各 workload 上的平均端到端时延柱状图，带 `stddev` 误差线
-- `e2e_percentiles_ms.png`
-  `p50` 和 `p95` 端到端时延对比图
-- `startup_mean_ms.png`
-  平均启动开销对比图
-- `runtime_breakdown_ms.png`
-  平均总耗时拆分图，区分 `internal_compute_ms` 与 `startup_overhead_ms`
-- `e2e_boxplot_ms.png`
-  端到端时延分布箱线图
-- `startup_boxplot_ms.png`
-  启动开销分布箱线图
-- `e2e_cdf_ms.png`
-  端到端时延 CDF 曲线图
-- `README.md`
-  输出目录下的图表索引说明
-
-每张图都会同时导出：
-
-- `*.png`
-  适合快速查看和汇报文档
-- `*.pdf`
-  适合论文排版和矢量插图
+- `e2e_overview.pdf`
+  对比各 runtime 在各 workload 上的 `mean`、`p50`、`p95` 端到端时延
+- `startup_overview.pdf`
+  对比各 runtime 在各 workload 上的 `mean`、`p50`、`p95` 启动开销
+- `breakdown.pdf`
+  展示各 workload 下 `startup_overhead_ms` 与 `internal_compute_ms` 的平均拆分
 
 说明：
 
-- 当每组只有 `1` 个样本时，箱线图和 CDF 仍然会生成，但统计意义有限
+- 当前脚本只输出 `*.pdf`，不会生成 `*.png`
+- `--detail-csv` 是实际绘图输入；`--summary-csv` 目前主要保留为 CLI 兼容参数
+- 脚本启动时会清理旧版命名的图表文件
 - 建议先执行 `./scale_test.sh --samples 30`，再生成图表
 
 ## 推荐的完整复现实验流程
