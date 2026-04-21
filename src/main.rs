@@ -1,23 +1,18 @@
-use std::time::Instant;
-
-fn fibonacci(n: u32) -> u32 {
-    match n {
-        0 => 0,
-        1 => 1,
-        _ => fibonacci(n - 1) + fibonacci(n - 2),
-    }
-}
+use my_app::{parse_app_args, render_app_output_json, run_workload, ParseAppArgsError};
 
 fn main() {
-    // 1. 记录进程启动后的第一时间
-    let process_start = Instant::now();
+    let workload = match parse_app_args(std::env::args().skip(1)) {
+        Ok(workload) => workload,
+        Err(ParseAppArgsError::HelpRequested) => {
+            println!("{}", my_app::app_usage());
+            return;
+        }
+        Err(ParseAppArgsError::Message(message)) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    };
 
-    let n = 45;
-    let result_start = Instant::now();
-    let result = fibonacci(n);
-    let duration = result_start.elapsed();
-
-    println!("Result: {}", result);
-    println!("Execution_Time: {:?}", duration); // 纯函数计算时间
-    println!("Total_Process_Time: {:?}", process_start.elapsed()); // 包含初始化开销的时间
+    let output = run_workload(&workload);
+    println!("{}", render_app_output_json(&output));
 }

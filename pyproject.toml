@@ -1,0 +1,11 @@
+[project]
+name = "cs5296-benchmark-plots"
+version = "0.1.0"
+description = "Plot benchmark charts for WasmEdge and Docker runtime comparisons"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10,<4",
+]
+
+[tool.uv]
+package = false
