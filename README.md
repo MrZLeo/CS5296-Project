@@ -127,20 +127,31 @@
 cargo run --bin bench_local --release -- "$@"
 ```
 
+文件：[size_test.sh](size_test.sh)
+
+这是空间占用对比的快捷入口，本质上包装：
+
+```bash
+cargo run --bin bench_size --release -- "$@"
+```
+
 ## 目录说明
 
 ```text
 .
 ├── pyproject.toml               # uv 管理的 Python 绘图依赖
 ├── scripts/
-│   └── plot_benchmarks.py       # 从 CSV 生成图表
+│   ├── plot_benchmarks.py       # 从 CSV 生成图表
+│   └── plot_space_sizes.py      # 从空间占用 CSV 生成图表
 ├── src/
 │   ├── lib.rs                  # workload 库和 JSON 输出逻辑
 │   ├── main.rs                 # 应用入口
 │   └── bin/
-│       └── bench_local.rs      # 宿主侧本地基准驱动
+│       ├── bench_local.rs      # 宿主侧本地基准驱动
+│       └── bench_size.rs       # 三种运行路径的空间占用对比
 ├── Dockerfile                  # Docker 运行路径
 ├── scale_test.sh               # 基准快捷脚本
+├── size_test.sh                # 空间占用对比快捷脚本
 ├── my-app-aot.wasm             # WasmEdge AOT 工件
 ├── docker-app.yaml             # K8s Docker Pod 示例
 ├── wasm-app.yaml               # K8s Wasm Pod 示例
@@ -524,6 +535,100 @@ target/bench-results/plots
 - `--detail-csv` 是实际绘图输入；`--summary-csv` 目前主要保留为 CLI 兼容参数
 - 脚本启动时会清理旧版命名的图表文件
 - 建议先执行 `./scale_test.sh --samples 30`，再生成图表
+
+## 空间占用对比测试
+
+除了时延基准，现在仓库还提供一个空间占用对比测试，同时比较三个维度：
+
+- `artifact_only`
+  - `wasmedge-wasm`：普通 Wasm 工件文件大小
+  - `wasmedge-aot`：AOT 工件文件大小
+  - `docker`：镜像内应用二进制大小，默认读取 `/usr/local/cargo/bin/my-app`
+- `full_deploy_size`
+  - `wasmedge-wasm`：`WasmEdge runtime 安装目录 + Wasm 工件`
+  - `wasmedge-aot`：`WasmEdge runtime 安装目录 + AOT 工件`
+  - `docker`：本地 Docker 镜像大小
+- `runtime_peak_rss`
+  - 三条路径都运行一次 `alloc_touch`
+  - 通过 `--hold-ms` 保持分配后的内存短暂停留
+  - 记录运行过程中观测到的峰值常驻内存
+
+### 1. 运行空间测试
+
+```bash
+./size_test.sh
+```
+
+等价命令：
+
+```bash
+cargo run --bin bench_size --release --
+```
+
+如需自定义输入输出路径：
+
+```bash
+cargo run --bin bench_size --release -- \
+  --wasm-artifact target/wasm32-wasip1/release/my-app.wasm \
+  --wasm-aot-artifact my-app-aot.wasm \
+  --docker-image my-docker-app:latest \
+  --docker-app-path /usr/local/cargo/bin/my-app \
+  --runtime-bytes 67108864 \
+  --hold-ms 1200 \
+  --poll-ms 100 \
+  --output target/bench-results/space-size.csv
+```
+
+默认输出：
+
+```text
+target/bench-results/space-size.csv
+```
+
+CSV 字段：
+
+```text
+runtime,metric,kind,source,value_bytes,value_mib
+```
+
+字段说明：
+
+- `runtime`：比较对象
+- `metric`：`artifact_only`、`full_deploy_size` 或 `runtime_peak_rss`
+- `kind`
+  - 对 `artifact_only` 来说是 `artifact` 或 `binary`
+  - 对 `full_deploy_size` 来说是 `runtime+artifact` 或 `image`
+  - 对运行时内存来说是 `process` 或 `container`
+- `source`
+  - 对 `artifact_only` 来说是文件路径或镜像内应用路径
+  - 对 `full_deploy_size` 来说是 `artifact + runtime root` 或镜像标签
+  - 对运行时内存来说是探测 workload 参数
+- `value_bytes`：原始字节数
+- `value_mib`：按 `1024 * 1024` 换算后的 MiB
+
+### 2. 生成空间占用图
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python scripts/plot_space_sizes.py \
+  --input-csv target/bench-results/space-size.csv \
+  --output-dir target/bench-results/plots
+```
+
+默认输出文件：
+
+```text
+target/bench-results/plots/space_size_overview.pdf
+```
+
+图表说明：
+
+- 同一张图分成 3 个面板
+- 左侧展示 `artifact_only`
+- 中间展示 `full_deploy_size`
+- 右侧展示 `runtime_peak_rss`
+- 3 个面板都使用对数坐标
+- 每个柱子会标注绝对大小（MiB）和相对最小项的倍数
+- 适合直接放入报告或答辩材料
 
 ## 推荐的完整复现实验流程
 

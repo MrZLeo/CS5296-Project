@@ -1,4 +1,6 @@
 use std::fmt;
+use std::thread::sleep;
+use std::time::Duration;
 use std::time::Instant;
 
 pub const DEFAULT_FIB_N: u32 = 45;
@@ -9,18 +11,19 @@ const APP_USAGE: &str = "\
 Usage:
   my-app [--workload noop]
   my-app [--workload fib] [--n <u32>]
-  my-app --workload alloc_touch [--bytes <usize>]
+  my-app --workload alloc_touch [--bytes <usize>] [--hold-ms <u64>]
 
 Defaults:
   workload=fib
   n=45
-  bytes=67108864";
+  bytes=67108864
+  hold_ms=0";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Workload {
     Noop,
     Fib { n: u32 },
-    AllocTouch { bytes: usize },
+    AllocTouch { bytes: usize, hold_ms: u64 },
 }
 
 impl Workload {
@@ -36,7 +39,13 @@ impl Workload {
         match self {
             Self::Noop => "none".to_string(),
             Self::Fib { n } => format!("n={n}"),
-            Self::AllocTouch { bytes } => format!("bytes={bytes}"),
+            Self::AllocTouch { bytes, hold_ms } => {
+                if *hold_ms == 0 {
+                    format!("bytes={bytes}")
+                } else {
+                    format!("bytes={bytes},hold_ms={hold_ms}")
+                }
+            }
         }
     }
 
@@ -49,12 +58,19 @@ impl Workload {
                 "--n".to_string(),
                 n.to_string(),
             ],
-            Self::AllocTouch { bytes } => vec![
-                "--workload".to_string(),
-                "alloc_touch".to_string(),
-                "--bytes".to_string(),
-                bytes.to_string(),
-            ],
+            Self::AllocTouch { bytes, hold_ms } => {
+                let mut args = vec![
+                    "--workload".to_string(),
+                    "alloc_touch".to_string(),
+                    "--bytes".to_string(),
+                    bytes.to_string(),
+                ];
+                if *hold_ms > 0 {
+                    args.push("--hold-ms".to_string());
+                    args.push(hold_ms.to_string());
+                }
+                args
+            }
         }
     }
 }
@@ -101,6 +117,7 @@ where
     let mut workload_name: Option<String> = None;
     let mut fib_n: Option<u32> = None;
     let mut alloc_bytes: Option<usize> = None;
+    let mut hold_ms: Option<u64> = None;
 
     let mut index = 0;
     while index < args.len() {
@@ -126,6 +143,13 @@ where
                 alloc_bytes = Some(parse_usize(value, "--bytes")?);
                 index += 2;
             }
+            "--hold-ms" => {
+                let value = args.get(index + 1).ok_or_else(|| {
+                    ParseAppArgsError::Message("missing value for --hold-ms".to_string())
+                })?;
+                hold_ms = Some(parse_u64(value, "--hold-ms")?);
+                index += 2;
+            }
             unknown => {
                 return Err(ParseAppArgsError::Message(format!(
                     "unknown argument: {unknown}\n\n{}",
@@ -147,12 +171,22 @@ where
                     "--bytes is only valid with --workload alloc_touch".to_string(),
                 ));
             }
+            if hold_ms.is_some() {
+                return Err(ParseAppArgsError::Message(
+                    "--hold-ms is only valid with --workload alloc_touch".to_string(),
+                ));
+            }
             Workload::Noop
         }
         "fib" => {
             if alloc_bytes.is_some() {
                 return Err(ParseAppArgsError::Message(
                     "--bytes is only valid with --workload alloc_touch".to_string(),
+                ));
+            }
+            if hold_ms.is_some() {
+                return Err(ParseAppArgsError::Message(
+                    "--hold-ms is only valid with --workload alloc_touch".to_string(),
                 ));
             }
             Workload::Fib {
@@ -167,6 +201,7 @@ where
             }
             Workload::AllocTouch {
                 bytes: alloc_bytes.unwrap_or(DEFAULT_ALLOC_BYTES),
+                hold_ms: hold_ms.unwrap_or(0),
             }
         }
         other => {
@@ -184,7 +219,7 @@ pub fn run_workload(workload: &Workload) -> AppOutput {
     let result_digest = match workload {
         Workload::Noop => 0,
         Workload::Fib { n } => fibonacci(*n) as u64,
-        Workload::AllocTouch { bytes } => alloc_touch(*bytes),
+        Workload::AllocTouch { bytes, hold_ms } => alloc_touch(*bytes, *hold_ms),
     };
 
     AppOutput {
@@ -235,6 +270,14 @@ fn parse_usize(value: &str, flag: &str) -> Result<usize, ParseAppArgsError> {
     })
 }
 
+fn parse_u64(value: &str, flag: &str) -> Result<u64, ParseAppArgsError> {
+    value.parse::<u64>().map_err(|_| {
+        ParseAppArgsError::Message(format!(
+            "invalid value for {flag}: {value} (expected unsigned 64-bit integer)"
+        ))
+    })
+}
+
 fn fibonacci(n: u32) -> u32 {
     match n {
         0 => 0,
@@ -243,7 +286,7 @@ fn fibonacci(n: u32) -> u32 {
     }
 }
 
-fn alloc_touch(bytes: usize) -> u64 {
+fn alloc_touch(bytes: usize, hold_ms: u64) -> u64 {
     let mut buffer = vec![0_u8; bytes];
     let mut digest = 14_695_981_039_346_656_037_u64 ^ bytes as u64;
     let page_size = 4096usize;
@@ -262,6 +305,10 @@ fn alloc_touch(bytes: usize) -> u64 {
         buffer[tail_index] = buffer[tail_index].wrapping_add(0xA5);
         digest = digest.wrapping_mul(1_099_511_628_211);
         digest ^= buffer[tail_index] as u64;
+    }
+
+    if hold_ms > 0 {
+        sleep(Duration::from_millis(hold_ms));
     }
 
     digest ^ buffer.len() as u64
@@ -349,7 +396,29 @@ mod tests {
         let args = ["--workload", "alloc_touch", "--bytes", "8192"];
         assert_eq!(
             parse_app_args(args).unwrap(),
-            Workload::AllocTouch { bytes: 8192 }
+            Workload::AllocTouch {
+                bytes: 8192,
+                hold_ms: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn alloc_touch_hold_args_parse() {
+        let args = [
+            "--workload",
+            "alloc_touch",
+            "--bytes",
+            "8192",
+            "--hold-ms",
+            "250",
+        ];
+        assert_eq!(
+            parse_app_args(args).unwrap(),
+            Workload::AllocTouch {
+                bytes: 8192,
+                hold_ms: 250,
+            }
         );
     }
 

@@ -87,6 +87,7 @@ fn run_benchmark(config: &BenchConfig) -> Result<(), String> {
         },
         Workload::AllocTouch {
             bytes: DEFAULT_ALLOC_BYTES,
+            hold_ms: 0,
         },
     ];
 
@@ -436,6 +437,7 @@ fn build_summary(records: &[SampleRecord]) -> Vec<SummaryRecord> {
             },
             Workload::AllocTouch {
                 bytes: DEFAULT_ALLOC_BYTES,
+                hold_ms: 0,
             },
         ] {
             let parameter = workload.parameter();

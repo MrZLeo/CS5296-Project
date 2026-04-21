@@ -2,3 +2,4 @@
 .venv
 .uv-cache
 .plot-cache
+__pycache__/
