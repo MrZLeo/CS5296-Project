@@ -627,7 +627,6 @@ target/bench-results/plots/space_size_overview.pdf
 - 中间展示 `full_deploy_size`
 - 右侧展示 `runtime_peak_rss`
 - 3 个面板都使用对数坐标
-- 每个柱子会标注绝对大小（MiB）和相对最小项的倍数
 - 适合直接放入报告或答辩材料
 
 ## 推荐的完整复现实验流程
