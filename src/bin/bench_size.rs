@@ -1,13 +1,15 @@
 use std::env;
 use std::fs::{self, File};
 use std::io::{BufWriter, Read, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread::sleep;
 use std::time::Duration;
 
 use my_app::{Workload, DEFAULT_ALLOC_BYTES};
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 const DEFAULT_DOCKER_IMAGE: &str = "my-docker-app:latest";
 const DEFAULT_DOCKER_APP_PATH: &str = "/usr/local/cargo/bin/my-app";
@@ -429,9 +431,42 @@ fn find_program_in_path(program: &str) -> Result<PathBuf, String> {
 
 fn is_executable_file(path: &Path) -> bool {
     match fs::metadata(path) {
-        Ok(metadata) => metadata.is_file() && (metadata.permissions().mode() & 0o111 != 0),
+        Ok(metadata) => is_executable_metadata(path, &metadata),
         Err(_) => false,
     }
+}
+
+#[cfg(unix)]
+fn is_executable_metadata(_path: &Path, metadata: &fs::Metadata) -> bool {
+    metadata.is_file() && (metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(windows)]
+fn is_executable_metadata(path: &Path, metadata: &fs::Metadata) -> bool {
+    if !metadata.is_file() {
+        return false;
+    }
+
+    let extension = match path.extension().and_then(|value| value.to_str()) {
+        Some(extension) => extension,
+        None => return false,
+    };
+
+    env::var_os("PATHEXT")
+        .and_then(|value| value.into_string().ok())
+        .map(|value| {
+            value.split(';').any(|candidate| {
+                candidate
+                    .strip_prefix('.')
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(extension))
+            })
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn is_executable_metadata(_path: &Path, metadata: &fs::Metadata) -> bool {
+    metadata.is_file()
 }
 
 fn file_size_bytes(path: &Path) -> Result<u64, String> {
